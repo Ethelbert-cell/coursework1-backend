@@ -74,3 +74,60 @@ app.get('/lessons', async (req, res) => {
         res.status(500).json({ message: "Error fetching lessons", error: error.message });
     }
 });
+
+// B. POST route /orders - saves a new order and updates lesson spaces
+app.post('/orders', async (req, res) => {
+    const { name, phone, cart } = req.body;
+
+    if (!name || !phone || !cart || cart.length === 0) {
+        return res.status(400).json({ message: "Missing order details: name, phone, or cart items." });
+    }
+
+    const lessonIDs = cart.map(item => new ObjectId(item._id)); // Assuming _id from frontend is a string
+    const orderDetails = cart.map(item => ({
+        lessonId: new ObjectId(item._id),
+        subject: item.subject,
+        quantity: 1 // Assuming one item per cart entry for simplicity, adjust if cart stores quantity
+    }));
+
+    const newOrder = {
+        name,
+        phone,
+        lessonIDs: lessonIDs, // Store ObjectIds
+        orderDetails, // Store detailed order items
+        totalSpaces: cart.length, // Total number of items in the order
+        orderDate: new Date()
+    };
+
+    const session = client.startSession();
+    session.startTransaction();
+
+    try {
+        // 1. Save the new order
+        const orderResult = await ordersCollection.insertOne(newOrder, { session });
+
+        // 2. Update available spaces for each lesson in the order
+        for (const item of cart) {
+            const lessonId = new ObjectId(item._id);
+            const updateResult = await lessonsCollection.updateOne(
+                { _id: lessonId, spaces: { $gt: 0 } },
+                { $inc: { spaces: -1 } },
+                { session }
+            );
+
+            if (updateResult.matchedCount === 0) {
+                await session.abortTransaction();
+                return res.status(400).json({ message: `Lesson ${item.subject} is out of spaces or does not exist.` });
+            }
+        }
+
+        await session.commitTransaction();
+        res.status(201).json({ message: "Order placed successfully!", orderId: orderResult.insertedId });
+    } catch (error) {
+        await session.abortTransaction();
+        console.error("Error processing order:", error);
+        res.status(500).json({ message: "Error processing order", error: error.message });
+    } finally {
+        await session.endSession();
+    }
+});
