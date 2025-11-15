@@ -206,3 +206,9 @@ app.use((err, req, res, next) => {
     console.error('An error occurred:', err.stack);
     res.status(500).send('Something broke!');
 });
+
+
+// Start the Express server
+app.listen(port, () => {
+    console.log(`Express.js app listening at http://localhost:${port}`);
+});
