@@ -60,3 +60,17 @@ app.use(cors());
 
 // Body parser middleware for JSON requests
 app.use(express.json());
+
+
+// --- REST API Routes ---
+
+// A. GET route /lessons - returns all lessons as JSON
+app.get('/lessons', async (req, res) => {
+    try {
+        const lessons = await lessonsCollection.find({}).toArray();
+        res.json(lessons);
+    } catch (error) {
+        console.error("Error fetching lessons:", error);
+        res.status(500).json({ message: "Error fetching lessons", error: error.message });
+    }
+});
