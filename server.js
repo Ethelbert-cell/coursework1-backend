@@ -158,3 +158,35 @@ app.put('/lessons/:id', async (req, res) => {
         res.status(500).json({ message: "Error updating lesson", error: error.message });
     }
 });
+
+
+// D. GET route /search - handles search requests
+app.get('/search', async (req, res) => {
+    const query = req.query.q; // e.g., /search?q=math
+    const sortAttribute = req.query.sortAttribute || 'subject';
+    const sortOrder = req.query.sortOrder === 'desc' ? -1 : 1;
+
+    if (!query) {
+        // If no search query, return all lessons (or handle as per requirement)
+        return res.redirect('/lessons');
+    }
+
+    try {
+        const searchFilter = {
+            $or: [
+                { subject: { $regex: query, $options: 'i' } },
+                { location: { $regex: query, $options: 'i' } },
+                { price: parseFloat(query) || 0 }, // Convert to number if possible
+                { spaces: parseInt(query) || 0 } // Convert to number if possible
+            ]
+        };
+
+        const lessons = await lessonsCollection.find(searchFilter)
+                                            .sort({ [sortAttribute]: sortOrder })
+                                            .toArray();
+        res.json(lessons);
+    } catch (error) {
+        console.error("Error during search:", error);
+        res.status(500).json({ message: "Error during search", error: error.message });
+    }
+});
