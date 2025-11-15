@@ -39,3 +39,24 @@ async function connectToMongoDB() {
         process.exit(1); // Exit if database connection fails
     }
 }
+
+
+// Connect to MongoDB when the server starts
+connectToMongoDB();
+
+// --- Middleware Functions ---
+
+// A. Logger middleware
+app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.originalUrl}`);
+    next();
+});
+
+// B. Static file middleware for lesson images
+app.use('/images', express.static(path.join(__dirname, 'public/images')));
+
+// CORS middleware to allow requests from your Vue.js app
+app.use(cors());
+
+// Body parser middleware for JSON requests
+app.use(express.json());
