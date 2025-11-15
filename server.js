@@ -131,3 +131,30 @@ app.post('/orders', async (req, res) => {
         await session.endSession();
     }
 });
+
+
+
+// C. PUT route /lessons/:id - updates any attribute in a lesson (specifically spaces)
+app.put('/lessons/:id', async (req, res) => {
+    const lessonId = req.params.id;
+    const updates = req.body; // e.g., { spaces: 4 }
+
+    if (!ObjectId.isValid(lessonId)) {
+        return res.status(400).json({ message: "Invalid Lesson ID format." });
+    }
+
+    try {
+        const result = await lessonsCollection.updateOne(
+            { _id: new ObjectId(lessonId) },
+            { $set: updates }
+        );
+
+        if (result.matchedCount === 0) {
+            return res.status(404).json({ message: "Lesson not found." });
+        }
+        res.json({ message: "Lesson updated successfully!", modifiedCount: result.modifiedCount });
+    } catch (error) {
+        console.error("Error updating lesson:", error);
+        res.status(500).json({ message: "Error updating lesson", error: error.message });
+    }
+});
