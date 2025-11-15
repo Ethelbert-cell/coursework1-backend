@@ -1,8 +1,9 @@
 require('dotenv').config(); // Load environment variables from .env file
 const express = require('express');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
-const cors = require('cors');
+
 const path = require('path');
+const cors = require('cors');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -40,7 +41,6 @@ async function connectToMongoDB() {
     }
 }
 
-
 // Connect to MongoDB when the server starts
 connectToMongoDB();
 
@@ -60,7 +60,6 @@ app.use(cors());
 
 // Body parser middleware for JSON requests
 app.use(express.json());
-
 
 // --- REST API Routes ---
 
@@ -132,8 +131,6 @@ app.post('/orders', async (req, res) => {
     }
 });
 
-
-
 // C. PUT route /lessons/:id - updates any attribute in a lesson (specifically spaces)
 app.put('/lessons/:id', async (req, res) => {
     const lessonId = req.params.id;
@@ -159,38 +156,66 @@ app.put('/lessons/:id', async (req, res) => {
     }
 });
 
-
 // D. GET route /search - handles search requests
 app.get('/search', async (req, res) => {
-    const query = req.query.q; // e.g., /search?q=math
+    const query = req.query.q;
     const sortAttribute = req.query.sortAttribute || 'subject';
     const sortOrder = req.query.sortOrder === 'desc' ? -1 : 1;
 
+    // If there's no query, it's better to return all lessons, sorted as requested.
     if (!query) {
-        // If no search query, return all lessons (or handle as per requirement)
-        return res.redirect('/lessons');
+        try {
+            const lessons = await lessonsCollection.find({})
+                                                .sort({ [sortAttribute]: sortOrder })
+                                                .toArray();
+            return res.json(lessons);
+        } catch (error) {
+            console.error("Error fetching all lessons for empty search:", error);
+            return res.status(500).json({ message: "Error fetching lessons", error: error.message });
+        }
     }
 
     try {
-        const searchFilter = {
-            $or: [
-                { subject: { $regex: query, $options: 'i' } },
-                { location: { $regex: query, $options: 'i' } },
-                { price: parseFloat(query) || 0 }, // Convert to number if possible
-                { spaces: parseInt(query) || 0 } // Convert to number if possible
-            ]
-        };
+        // Using an aggregation pipeline to allow searching within numeric fields as text
+        const pipeline = [
+            // 1. Add new fields where numeric fields are converted to strings
+            {
+                $addFields: {
+                    priceStr: { $toString: "$price" },
+                    spacesStr: { $toString: "$spaces" }
+                }
+            },
+            // 2. Match documents where the query appears in any of the specified fields
+            {
+                $match: {
+                    $or: [
+                        { subject: { $regex: query, $options: 'i' } }, // Case-insensitive regex search on subject
+                        { location: { $regex: query, $options: 'i' } }, // Case-insensitive regex search on location
+                        { priceStr: { $regex: query, $options: 'i' } }, // Search in the string version of price
+                        { spacesStr: { $regex: query, $options: 'i' } }  // Search in the string version of spaces
+                    ]
+                }
+            },
+            // 3. Sort the results
+            {
+                $sort: { [sortAttribute]: sortOrder }
+            },
+            // 4. Remove the temporary string fields from the final output
+            {
+                $project: {
+                    priceStr: 0,
+                    spacesStr: 0
+                }
+            }
+        ];
 
-        const lessons = await lessonsCollection.find(searchFilter)
-                                            .sort({ [sortAttribute]: sortOrder })
-                                            .toArray();
+        const lessons = await lessonsCollection.aggregate(pipeline).toArray();
         res.json(lessons);
     } catch (error) {
         console.error("Error during search:", error);
         res.status(500).json({ message: "Error during search", error: error.message });
     }
 });
-
 
 // --- Error Handling Middleware ---
 // This middleware will be executed if no route matches the request (404)
@@ -206,7 +231,6 @@ app.use((err, req, res, next) => {
     console.error('An error occurred:', err.stack);
     res.status(500).send('Something broke!');
 });
-
 
 // Start the Express server
 app.listen(port, () => {
