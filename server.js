@@ -176,40 +176,26 @@ app.get('/search', async (req, res) => {
     }
 
     try {
-        // Using an aggregation pipeline to allow searching within numeric fields as text
-        const pipeline = [
-            // 1. Add new fields where numeric fields are converted to strings
-            {
-                $addFields: {
-                    priceStr: { $toString: "$price" },
-                    spacesStr: { $toString: "$spaces" }
-                }
-            },
-            // 2. Match documents where the query appears in any of the specified fields
-            {
-                $match: {
-                    $or: [
-                        { subject: { $regex: query, $options: 'i' } }, // Case-insensitive regex search on subject
-                        { location: { $regex: query, $options: 'i' } }, // Case-insensitive regex search on location
-                        { priceStr: { $regex: query, $options: 'i' } }, // Search in the string version of price
-                        { spacesStr: { $regex: query, $options: 'i' } }  // Search in the string version of spaces
-                    ]
-                }
-            },
-            // 3. Sort the results
-            {
-                $sort: { [sortAttribute]: sortOrder }
-            },
-            // 4. Remove the temporary string fields from the final output
-            {
-                $project: {
-                    priceStr: 0,
-                    spacesStr: 0
-                }
-            }
+        // This is the new search logic based on your example.
+        // It checks if the search query is a number.
+        const numericQuery = isNaN(query) ? null : Number(query);
+        
+        // It always searches for the text in the 'subject' and 'location' fields.
+        const searchConditions = [
+            { subject: { $regex: query, $options: 'i' } }, // 'i' means case-insensitive
+            { location: { $regex: query, $options: 'i' } }
         ];
-
-        const lessons = await lessonsCollection.aggregate(pipeline).toArray();
+        
+        // ONLY if the query is a number, it also looks for an EXACT match in 'price' and 'spaces'.
+        if (numericQuery !== null) {
+            searchConditions.push({ price: numericQuery });
+            searchConditions.push({ spaces: numericQuery });
+        }
+        
+        // It finds any lesson that matches ANY of these conditions ($or).
+        const lessons = await lessonsCollection.find({ $or: searchConditions })
+                                            .sort({ [sortAttribute]: sortOrder }) // We keep the sorting!
+                                            .toArray();
         res.json(lessons);
     } catch (error) {
         console.error("Error during search:", error);
